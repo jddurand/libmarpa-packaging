@@ -23,7 +23,7 @@ use POSIX qw/EXIT_SUCCESS EXIT_FAILURE/;
 # ---------
 our $VERSION = '1.0';
 our $MAP_FILENAME = 'map.txt';
-our $TMP_DIRNAME = tempdir(CLEANUP => 1);
+our $TMP_DIRNAME = tempdir(CLEANUP => 0);
 
 # -------
 # Options
@@ -78,11 +78,11 @@ extractCPANTarball($tarball, $TMP_DIRNAME, \%dirs);
 # -------------------
 # Process directories
 # -------------------
-my %newDirs = (
-    libmarpa_dist => 'libmarpa',
-    libmarpa_doc_dist => 'libmarpa-doc'
+my %newDirsFormat = (
+    libmarpa_dist => 'libmarpa_%d',
+    libmarpa_doc_dist => 'libmarpa-doc_%d'
     );
-processDirs(\%dirs, \%newDirs, \%opts);
+processDirs(\%dirs, \%newDirsFormat, \%opts);
 
 exit(EXIT_SUCCESS);
 
@@ -223,10 +223,10 @@ sub extractCPANTarball {
 # Process directories
 # #############################################################################
 sub processDirs {
-    my ($dirsp, $newDirsp, $optsp) = @_;
+    my ($dirsp, $newDirsFormatp, $optsp) = @_;
 
     foreach (keys %{$dirsp}) {
-	processDir($_, $dirsp->{$_}, $newDirsp->{$_}, $optsp);
+	processDir($_, $dirsp->{$_}, $newDirsFormatp->{$_}, $optsp);
     }
 }
 
@@ -234,12 +234,12 @@ sub processDirs {
 # Process a directory
 # #############################################################################
 sub processDir {
-    my ($dirName, $dirPath, $newDirName, $optsp) = @_;
+    my ($dirName, $dirPath, $newDirFormat, $optsp) = @_;
 
     #
     # Rename directories
     #
-    my $newDirPath = File::Spec->catdir(dirname($dirPath), $newDirName) . "-$optsp->{libMarpaVersion}";
+    my $newDirPath = sprintf(File::Spec->catdir(dirname($dirPath), $newDirFormat), $optsp->{libMarpaVersion});
     $log->debugf('Renaming %s to %s', $dirPath, $newDirPath);
     move($dirPath, $newDirPath) || die "Cannot rename $dirPath to $newDirPath";
 
