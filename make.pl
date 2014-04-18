@@ -439,9 +439,9 @@ sub debianize {
 		no_chdir => 1,
 		wanted => sub {
 		    if (/\.(deb|dsc)$/) {
-			my @remove = ('reprepro', '-Vb', $optsp->{reprepro}, 'remove', 'store', $pkgName{$dir});
+			my @remove = ('reprepro', '-Vb', $optsp->{reprepro}, 'remove', 'unstable', $pkgName{$dir});
 			_system(\@remove, $logPrefix);
-			my @include = ('reprepro', '-Vb', $optsp->{reprepro}, "include$1", 'store', $_);
+			my @include = ('reprepro', '-Vb', $optsp->{reprepro}, "include$1", 'unstable', $_);
 			_system(\@include, $logPrefix);
 		    }
 		}
