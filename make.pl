@@ -31,13 +31,15 @@ our $TMP_DIRNAME = tempdir(CLEANUP => 1);
 my %opts = (
     libMarpaVersion => 0,
     mapFilename     => $MAP_FILENAME,
-    logLevel        => 'WARN'
+    logLevel        => 'WARN',
+    debian          => 0,
 );
 my %cmdOpts = (
-    'libmarpaVersion=i' => sub { $opts{libMarpaVersion} = $_[1] },
+    'version=i'         => sub { $opts{libMarpaVersion} = $_[1] },
     'mapFilename=s'     => sub { $opts{mapFilename} = $_[1] },
+    'debian!'           => sub { $opts{debian} = $_[1] },
     'help!'             => sub { help(\%opts) },
-    'verbose!'          => sub { $opts{logLevel} = $_[1] ? 'DEBUG' : 'WARN' }
+    'verbose!'          => sub { $opts{logLevel} = $_[1] ? 'DEBUG' : 'WARN' },
     );
 GetOptions (%cmdOpts) || die "Error in command line arguments";
 
@@ -53,7 +55,7 @@ my %map = ();
 loadMap($MAP_FILENAME, \%map);
 
 # ----------------------
-# Select libmarpaVersion
+# Select libMarpaVersion
 # ----------------------
 if (! $opts{libMarpaVersion}) {
     $opts{libMarpaVersion} = (sort {$b <=> $a} keys %map)[0];
@@ -80,7 +82,7 @@ my %newDirs = (
     libmarpa_dist => 'libmarpa',
     libmarpa_doc_dist => 'libmarpa-doc'
     );
-processDirs(\%dirs, \%newDirs, $opts{libMarpaVersion});
+processDirs(\%dirs, \%newDirs, \%opts);
 
 exit(EXIT_SUCCESS);
 
@@ -131,17 +133,19 @@ sub help {
     my ($optsp) = @_;
 
     print <<HELP;
-Usage: $^X $0 [options]--libmarpa=libmarpaVersion --help --verbose
+Usage: $^X $0 [options]
 
 where options are all optional and can be:
 
 --map=mapFilename             Mapping libmarpa version <=> marpa CPAN tarball
                               Default value: $optsp->{mapFilename}
 
---libmarpa=libmarpaVersion    libmarpa version to build.
+--version=libMarpaVersio n    libmarpa version to build.
                               Default value: highest numeric loaded from mapFilename
 
---version                     Verbose mode.
+--verbose                     Verbose mode.
+
+--debian                      Debianize.
 
 --help                        This help.
 HELP
@@ -152,9 +156,9 @@ HELP
 # Get CPAN Tarball
 # #############################################################################
 sub getCPANTarball {
-    my ($libmarpaVersion, $mapp, $tmpdir) = @_;
+    my ($libMarpaVersion, $mapp, $tmpdir) = @_;
 
-    my $uri = URI->new($mapp->{$libmarpaVersion});
+    my $uri = URI->new($mapp->{$libMarpaVersion});
     my $path = $uri->path;
     my $base = basename($path);
     my $dst = File::Spec->catdir($tmpdir, $base);
@@ -219,10 +223,10 @@ sub extractCPANTarball {
 # Process directories
 # #############################################################################
 sub processDirs {
-    my ($dirsp, $newDirsp, $libmarpaVersion) = @_;
+    my ($dirsp, $newDirsp, $optsp) = @_;
 
     foreach (keys %{$dirsp}) {
-	processDir($_, $dirsp->{$_}, $newDirsp->{$_}, $libmarpaVersion);
+	processDir($_, $dirsp->{$_}, $newDirsp->{$_}, $optsp);
     }
 }
 
@@ -230,13 +234,18 @@ sub processDirs {
 # Process a directory
 # #############################################################################
 sub processDir {
-    my ($dirName, $dirPath, $newDirName, $libmarpaVersion) = @_;
+    my ($dirName, $dirPath, $newDirName, $optsp) = @_;
 
     #
     # Rename directories
     #
-    my $newDirPath = File::Spec->catdir(dirname($dirPath), $newDirName) . "-$libmarpaVersion";
+    my $newDirPath = File::Spec->catdir(dirname($dirPath), $newDirName) . "-$optsp->{libMarpaVersion}";
     $log->debugf('Renaming %s to %s', $dirPath, $newDirPath);
     move($dirPath, $newDirPath) || die "Cannot rename $dirPath to $newDirPath";
+
+    #
+    # Debianize ?
+    #
+    debianize($newDirPath, $optsp) if ($optsp->{debian});
 
 }
