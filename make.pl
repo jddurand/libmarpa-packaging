@@ -20,7 +20,7 @@ use Log::Any qw/$log/;
 use URI;
 use Archive::Tar;
 use Archive::Tar::Constant qw/FILE/;
-use Cwd;
+use Cwd qw/getcwd abs_path/;
 use IPC::Run qw/run/;
 use POSIX qw/EXIT_SUCCESS EXIT_FAILURE/;
 
@@ -37,6 +37,7 @@ our $TMP_DIRNAME = tempdir(CLEANUP => 1);
 my %opts = (
     libMarpaVersion => 0,
     mapFilename     => $MAP_FILENAME,
+    repgit          => File::Spec->catdir(File::Spec->updir, 'jddurand.github.io'),
     reprepro        => 'reprepro',
     logLevel        => 'INFO',
     debian          => 1,
@@ -44,12 +45,14 @@ my %opts = (
 my %cmdOpts = (
     'version=i'         => sub { $opts{libMarpaVersion} = $_[1] },
     'mapFilename=s'     => sub { $opts{mapFilename} = $_[1] },
+    'repgit=s'          => sub { $opts{repgit} = $_[1] },
     'reprepro=s'        => sub { $opts{reprepro} = $_[1] },
     'debian!'           => sub { $opts{debian} = $_[1] },
     'help!'             => sub { help(\%opts) },
     'verbose!'          => sub { $opts{logLevel} = $_[1] ? 'DEBUG' : 'WARN' },
     );
 GetOptions (%cmdOpts) || die "Error in command line arguments";
+$opts{repgit} = abs_path($opts{repgit});
 
 # ------------
 # Init logging
@@ -150,7 +153,10 @@ where options are all optional and can be:
 --debian                      Debianize.
                               Default value: $optsp->{debian}
 
---reprepro                    Reprepro managed repository.
+--repgit                      git local top directory hosting debian repository.
+                              Default value: $optsp->{repgit}
+
+--reprepro                    Reprepro managed repository, relative to repgit.
                               Default value: $optsp->{reprepro}
 
 --help                        This help.
@@ -429,25 +435,29 @@ sub debianize {
 	    my @debuild = ('debuild', '-us', '-uc');
 	    _system(\@debuild, $logPrefix);
 	}
-
-	$log->debugf('[%s] Moving back to to %s', $logPrefix, $cwd);
-	chdir($cwd) || die "Cannot chdir to $cwd, $!";
-
-	$log->debugf('[%s] Looking for .deb and .desc for reprepro inclusion', $logPrefix, $cwd);
-	find(
-	    {
-		no_chdir => 1,
-		wanted => sub {
-		    if (/\.(deb|dsc)$/) {
-			my @remove = ('reprepro', '-Vb', $optsp->{reprepro}, 'remove', 'unstable', $pkgName{$dir});
-			_system(\@remove, $logPrefix);
-			my @include = ('reprepro', '-Vb', $optsp->{reprepro}, "include$1", 'unstable', $_);
-			_system(\@include, $logPrefix);
+	{
+	    $log->debugf('[%s] Moving to %s', $logPrefix, $optsp->{repgit});
+	    chdir($optsp->{repgit}) || die "Cannot chdir to $optsp->{repgit}, $!";
+	    $log->debugf('[%s] Looking for .deb and .desc for reprepro inclusion', $logPrefix, $cwd);
+	    my $reppath = File::Spec->catdir($optsp->{repgit}, $optsp->{reprepro});
+	    find(
+		{
+		    no_chdir => 1,
+		    wanted => sub {
+			if (/\.(deb|dsc)$/) {
+			    my @remove = ('reprepro', '-Vb', $reppath, 'remove', 'unstable', $pkgName{$dir});
+			    _system(\@remove, $logPrefix);
+			    my @include = ('reprepro', '-Vb', $reppath, "include$1", 'unstable', $_);
+			    _system(\@include, $logPrefix);
+			}
 		    }
-		}
-	    },
-	    $tmpDir
-	    );
+		},
+		$tmpDir
+		);
+	}
+
+	$log->debugf('[%s] Moving back to %s', $logPrefix, $cwd);
+	chdir($cwd) || die "Cannot chdir to $cwd, $!";
     }
 }
 
