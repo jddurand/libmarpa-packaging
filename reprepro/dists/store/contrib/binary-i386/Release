@@ -1,0 +1,7 @@
+Archive: unstable
+Version: 3.0
+Component: contrib
+Origin: Debian
+Label: Debian
+Architecture: i386
+Description: Marpa Parser packages for debian/unstable

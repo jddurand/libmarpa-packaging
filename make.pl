@@ -29,7 +29,7 @@ use POSIX qw/EXIT_SUCCESS EXIT_FAILURE/;
 # ---------
 our $VERSION = '1.0';
 our $MAP_FILENAME = 'map.txt';
-our $TMP_DIRNAME = tempdir(CLEANUP => 0);
+our $TMP_DIRNAME = tempdir(CLEANUP => 1);
 
 # -------
 # Options
@@ -37,12 +37,14 @@ our $TMP_DIRNAME = tempdir(CLEANUP => 0);
 my %opts = (
     libMarpaVersion => 0,
     mapFilename     => $MAP_FILENAME,
+    reprepro        => 'reprepro',
     logLevel        => 'INFO',
     debian          => 1,
 );
 my %cmdOpts = (
     'version=i'         => sub { $opts{libMarpaVersion} = $_[1] },
     'mapFilename=s'     => sub { $opts{mapFilename} = $_[1] },
+    'reprepro=s'        => sub { $opts{reprepro} = $_[1] },
     'debian!'           => sub { $opts{debian} = $_[1] },
     'help!'             => sub { help(\%opts) },
     'verbose!'          => sub { $opts{logLevel} = $_[1] ? 'DEBUG' : 'WARN' },
@@ -147,6 +149,9 @@ where options are all optional and can be:
 
 --debian                      Debianize.
                               Default value: $optsp->{debian}
+
+--reprepro                    Reprepro managed repository.
+                              Default value: $optsp->{reprepro}
 
 --help                        This help.
 HELP
@@ -285,7 +290,7 @@ sub debianize {
 
 	my $cwd = getcwd();
 
-	my $tmpDir = tempdir(CLEANUP => 0);
+	my $tmpDir = tempdir(CLEANUP => 1);
 	$log->debugf('[%s] New temporary directory %s', $logPrefix, $tmpDir);
 	my $newTopDir = File::Spec->catdir($tmpDir, sprintf($dirsFormat{$dir}, "$optsp->{libMarpaVersion}"));
 	#
@@ -427,6 +432,22 @@ sub debianize {
 
 	$log->debugf('[%s] Moving back to to %s', $logPrefix, $cwd);
 	chdir($cwd) || die "Cannot chdir to $cwd, $!";
+
+	$log->debugf('[%s] Looking for .deb and .desc for reprepro inclusion', $logPrefix, $cwd);
+	find(
+	    {
+		no_chdir => 1,
+		wanted => sub {
+		    if (/\.(deb|dsc)$/) {
+			my @remove = ('reprepro', '-Vb', $optsp->{reprepro}, 'remove', 'store', $pkgName{$dir});
+			_system(\@remove, $logPrefix);
+			my @include = ('reprepro', '-Vb', $optsp->{reprepro}, "include$1", 'store', $_);
+			_system(\@include, $logPrefix);
+		    }
+		}
+	    },
+	    $tmpDir
+	    );
     }
 }
 
