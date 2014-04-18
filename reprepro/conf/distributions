@@ -1,7 +1,7 @@
 Origin: Debian
 Label: Debian
 Suite: unstable
-Codename: store
+Codename: unstable
 Version: 3.0
 Architectures: i386 source
 Components: contrib
