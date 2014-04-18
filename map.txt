@@ -1,0 +1,4 @@
+#
+# libmarpaVersion	CPANVersionUrl
+#
+6.0			http://search.cpan.org/CPAN/authors/id/J/JK/JKEGL/Marpa-R2-2.085_002.tar.gz
