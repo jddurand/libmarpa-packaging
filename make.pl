@@ -7,6 +7,10 @@ use File::Slurp;
 use File::Basename;
 use File::Spec;
 use File::Copy;
+use File::Remove qw/remove/;
+use File::Find;
+use File::stat;
+use File::chmod;
 use Data::Dumper;
 use Getopt::Long;
 use Log::Log4perl qw/:easy/;
@@ -14,8 +18,9 @@ use Log::Any::Adapter;
 use Log::Any qw/$log/;
 use URI;
 use Archive::Tar;
+use Archive::Tar::Constant qw/FILE/;
 use Cwd;
-use File::Find;
+use IPC::Run qw/run/;
 use POSIX qw/EXIT_SUCCESS EXIT_FAILURE/;
 
 # ---------
@@ -31,8 +36,8 @@ our $TMP_DIRNAME = tempdir(CLEANUP => 0);
 my %opts = (
     libMarpaVersion => 0,
     mapFilename     => $MAP_FILENAME,
-    logLevel        => 'WARN',
-    debian          => 0,
+    logLevel        => 'INFO',
+    debian          => 1,
 );
 my %cmdOpts = (
     'version=i'         => sub { $opts{libMarpaVersion} = $_[1] },
@@ -58,7 +63,7 @@ loadMap($MAP_FILENAME, \%map);
 # Select libMarpaVersion
 # ----------------------
 if (! $opts{libMarpaVersion}) {
-    $opts{libMarpaVersion} = (sort {$b <=> $a} keys %map)[0];
+    $opts{libMarpaVersion} = (sort {$a =~ s/\.//g; $b =~ s/\.//g; $b <=> $a} keys %map)[0];
 }
 
 # ------------
@@ -69,20 +74,13 @@ my $tarball = getCPANTarball($opts{libMarpaVersion}, \%map, $TMP_DIRNAME);
 # ---------------
 # Extract tarball
 # ---------------
-my %dirs = (
+my %subDirs = (
     libmarpa_dist => undef,
     libmarpa_doc_dist => undef
     );
-extractCPANTarball($tarball, $TMP_DIRNAME, \%dirs);
+extractCPANTarball($tarball, $TMP_DIRNAME, \%subDirs);
 
-# -------------------
-# Process directories
-# -------------------
-my %newDirsFormat = (
-    libmarpa_dist => 'libmarpa_%d',
-    libmarpa_doc_dist => 'libmarpa-doc_%d'
-    );
-processDirs(\%dirs, \%newDirsFormat, \%opts);
+processDirs(\%subDirs, \%opts);
 
 exit(EXIT_SUCCESS);
 
@@ -113,7 +111,7 @@ LOG4PERL_CONF
 sub loadMap {
     my ($mapFilename, $mapHashp) = @_;
 
-    $log->debugf('Loading %s', $mapFilename);
+    $log->infof('Loading %s', $mapFilename);
 
     my @mapLines = read_file($mapFilename);
     foreach (@mapLines) {
@@ -144,8 +142,10 @@ where options are all optional and can be:
                               Default value: highest numeric loaded from mapFilename
 
 --verbose                     Verbose mode.
+                              Default value: 0
 
 --debian                      Debianize.
+                              Default value: $optsp->{debian}
 
 --help                        This help.
 HELP
@@ -159,6 +159,9 @@ sub getCPANTarball {
     my ($libMarpaVersion, $mapp, $tmpdir) = @_;
 
     my $uri = URI->new($mapp->{$libMarpaVersion});
+
+    $log->infof('Loading %s', "$uri");
+
     my $path = $uri->path;
     my $base = basename($path);
     my $dst = File::Spec->catdir($tmpdir, $base);
@@ -178,23 +181,31 @@ sub getCPANTarball {
 sub extractCPANTarball {
     my ($tarball, $tmpdir, $dirsp) = @_;
 
-    $log->debugf('Opening %s', $tarball);
-    my $tar = Archive::Tar->new($tarball) || die "Cannot open $tarball, $!";
-
     my $cwd = getcwd();
     $log->debugf('Moving to %s', $tmpdir);
     chdir($tmpdir) || die "Cannot chdir to $tmpdir, $!";
 
-    $log->debugf('Extracting %s', $tarball);
+    $log->debugf('Opening %s', basename($tarball));
+    my $tar = Archive::Tar->new(basename($tarball)) || die "Cannot open $tarball, $!";
+
+    $log->debugf('Extracting %s', basename($tarball));
     $tar->extract();
 
     $log->debugf('Moving back to to %s', $cwd);
     chdir($cwd) || die "Cannot chdir to $cwd, $!";
 
-    my %dirs = (
-	libmarpa_dist => undef,
-	libmarpa_doc_dist => undef
-	);
+    $log->debugf('Making sure all files are writable in the extracted tarbal');
+    find(
+	{
+	    no_chdir => 1,
+	    wanted => sub {
+		if (-f $_) {
+		    chmod('+w', $_);
+		}
+	    }
+	}, $tmpdir);
+
+    $log->debugf('Looking for %s', [ keys %{$dirsp} ]);
     find(
 	{
 	    no_chdir => 1,
@@ -208,7 +219,7 @@ sub extractCPANTarball {
 	    }
 	}, $tmpdir);
 
-    $log->debugf('libmarpa directories paths: %s', \%dirs);
+    $log->debugf('libmarpa directories paths: %s', $dirsp);
 
     foreach (keys %{$dirsp}) {
 	if (! defined($dirsp->{$_})) {
@@ -223,29 +234,203 @@ sub extractCPANTarball {
 # Process directories
 # #############################################################################
 sub processDirs {
-    my ($dirsp, $newDirsFormatp, $optsp) = @_;
+    my ($subDirsp, $optsp) = @_;
 
-    foreach (keys %{$dirsp}) {
-	processDir($_, $dirsp->{$_}, $newDirsFormatp->{$_}, $optsp);
-    }
+    #
+    # Debianize ?
+    #
+    debianize(@_) if ($optsp->{debian});
+
 }
 
 # #############################################################################
 # Process a directory
 # #############################################################################
-sub processDir {
-    my ($dirName, $dirPath, $newDirFormat, $optsp) = @_;
+sub debianize {
+    my ($dirsp, $optsp) = @_;
 
-    #
-    # Rename directories
-    #
-    my $newDirPath = sprintf(File::Spec->catdir(dirname($dirPath), $newDirFormat), $optsp->{libMarpaVersion});
-    $log->debugf('Renaming %s to %s', $dirPath, $newDirPath);
-    move($dirPath, $newDirPath) || die "Cannot rename $dirPath to $newDirPath";
+    my %dirsFormat = (
+	libmarpa_dist => 'libmarpa-%s',
+	libmarpa_doc_dist => 'libmarpa-%s',
+	);
 
-    #
-    # Debianize ?
-    #
-    debianize($newDirPath, $optsp) if ($optsp->{debian});
+    my %tarsFormat = (
+	libmarpa_dist => 'libmarpa_%s',
+	libmarpa_doc_dist => 'libmarpa_%s',
+	);
 
+    my %dirsTemplate = (
+	libmarpa_dist => 'libmarpa',
+	libmarpa_doc_dist => 'libmarpadoc',
+	);
+
+    foreach (keys %{$dirsp}) {
+	my $dir = $_;
+
+	my $logPrefix = "debian $dir";
+
+	$log->infof('[%s] Processing %s', 'debian', $dir);
+	my $revision = "$optsp->{libMarpaVersion}-1";
+
+	my $cwd = getcwd();
+
+	my $tmpDir = tempdir(CLEANUP => 0);
+	$log->debugf('[%s] New temporary directory %s', $logPrefix, $tmpDir);
+	my $newTopDir = File::Spec->catdir($tmpDir, sprintf($dirsFormat{$dir}, "$optsp->{libMarpaVersion}"));
+	#
+	# Create newTopDir
+	#
+	$log->debugf('[%s] Renaming %s to %s', $logPrefix, $dirsp->{$dir}, $newTopDir);
+	move($dirsp->{$dir}, $newTopDir) || die "Cannot rename $dirsp->{$dir} to $newTopDir";
+	if (0) {
+	    #
+	    # Move to temporary directory for the archive creation
+	    #
+	    $log->debugf('[%s] Moving to %s', $logPrefix, $tmpDir);
+	    chdir($tmpDir) || die "Cannot chdir to $tmpDir, $!";
+	    #
+	    # Create orig tarball
+	    #
+	    my $origTarball = sprintf('%s.orig.tar.gz', sprintf($tarsFormat{$dir}, "$optsp->{libMarpaVersion}"));
+	    $log->debugf('[%s] Creating %s', $logPrefix, $origTarball);
+	    my $tar = Archive::Tar->new;
+	    $tar = Archive::Tar->new();
+	    find(
+		{
+		    no_chdir => 1,
+		    wanted => sub {
+			my $st = stat($_);
+			if ($st && -f $_) {
+			    $log->debugf('[%s] FILE %s', $logPrefix, $_);
+			    $tar->add_data($_, FILE, {mtime => $st->mtime});
+			}
+		    }
+		},
+		basename($newTopDir)
+		);
+	    $tar->write($origTarball, COMPRESS_GZIP);
+	}
+	{
+	    #
+	    # Move to directory containing source to package
+	    #
+	    $log->debugf('[%s] Moving to %s', $logPrefix, $newTopDir);
+	    chdir($newTopDir) || die "Cannot chdir to $newTopDir, $!";
+	    #
+	    # Debianize using our templates
+	    #
+	    my @dh_make = qw/dh_make --copyright lgpl3 --library --createorig --yes/;
+	    push(@dh_make, '--templates', File::Spec->catdir($cwd, 'templates', $dirsTemplate{$dir}, 'debian'));
+	    _system(\@dh_make, $logPrefix);
+	    #
+	    # Redo the changelog
+	    #
+	    my $changelog = File::Spec->catfile('debian', 'changelog');
+	    if (-e $changelog) {
+		$log->debugf('[%s] Unlinking %s', $logPrefix, $changelog);
+		unlink($changelog) || $log->warnf('[%s] Cannot unlink %s, %s', $logPrefix, $changelog, $!);
+	    }
+	    my @dch_changelog = ('dch', '--create', '--package', 'libmarpa', '--newversion', "$revision", "Release of libmarpa version $optsp->{libMarpaVersion}");
+	    _system(\@dch_changelog, $logPrefix);
+
+	    $log->debugf('[%s] Changing UNRELEASED to unstable in %s', $logPrefix, $changelog);
+	    my $changelogContent = read_file($changelog);
+	    $changelogContent =~ s/\bUNRELEASED\b/unstable/;
+	    open(CHANGELOG, '>', $changelog) || die "Cannot open $changelog, $!";
+	    print CHANGELOG $changelogContent;
+	    close(CHANGELOG) || $log->warnf('[%s] Cannot close %s, %s', $logPrefix, $changelog, $!);
+
+	    #
+	    # remove /.ex/i files
+	    #
+	    $log->debugf('[%s] Removing /\\.ex$/i files in %s directory', $logPrefix, 'debian');
+	    find(
+		{
+		    no_chdir => 1,
+		    wanted => sub {
+			if (-f $_ && $_ =~ /\.ex$/i) {
+			    unlink($_) || $log->warnf('[%s] Cannot remove %s, %s', $logPrefix, $_, $!);
+			}
+		    }
+		}, 'debian');
+	    #
+	    # remove other files
+	    #
+	    foreach (File::Spec->catfile('debian', 'README.Debian'), 'COPYING.LESSER') {
+		$log->debugf('[%s] Removing %s', $logPrefix, $_);
+		unlink($_) || $log->warnf('[%s] Cannot remove %s, %s', $logPrefix, $_, $!);
+	    }
+	}
+	{
+	    #
+	    # Move to temporary directory for the archive creation
+	    #
+	    $log->debugf('[%s] Moving to %s', $logPrefix, $tmpDir);
+	    chdir($tmpDir) || die "Cannot chdir to $tmpDir, $!";
+	    #
+	    # Create debian tarball
+	    #
+	    my $debianTarball = sprintf('%s.debian.tar.gz', sprintf($tarsFormat{$dir}, "$revision"));
+	    $log->debugf('[%s] Creating %s', $logPrefix, $debianTarball);
+	    my $tar = Archive::Tar->new;
+	    $tar = Archive::Tar->new();
+	    find(
+		{
+		    no_chdir => 1,
+		    wanted => sub {
+			my $st = stat($_);
+			if ($st && -f $_) {
+			    $log->debugf('[%s] FILE %s', $logPrefix, $_);
+			    $tar->add_data($_, FILE, {mtime => $st->mtime});
+			}
+		    }
+		},
+		File::Spec->catdir(basename($newTopDir), 'debian')
+		);
+	    $tar->write($debianTarball, COMPRESS_GZIP);
+	}
+	{
+	    #
+	    # Move to directory containing source to package
+	    #
+	    $log->debugf('[%s] Moving to %s', $logPrefix, $newTopDir);
+	    chdir($newTopDir) || die "Cannot chdir to $newTopDir, $!";
+	    #
+	    # Build the package
+	    #
+	    my @debuild = ('debuild', '-us', '-uc');
+	    _system(\@debuild, $logPrefix);
+	}
+
+	$log->debugf('[%s] Moving back to to %s', $logPrefix, $cwd);
+	chdir($cwd) || die "Cannot chdir to $cwd, $!";
+    }
+}
+
+sub _system {
+    my ($cmdp, $logPrefix, $in) = @_;
+
+    $logPrefix //= '';
+    $logPrefix = "[$logPrefix] " if ($logPrefix);
+
+    if ($in) {
+	$log->debugf('%sExecuting command %s with input: %s', $logPrefix, $cmdp, $in);
+    } else {
+	$log->debugf('%sExecuting command %s', $logPrefix, $cmdp);
+    }
+    run($cmdp,
+	\$in,
+	sub {
+	    foreach (split(/\n/, $_[0])) {
+		$log->infof('%s=> %s', $logPrefix, $_);
+	    }
+	},
+	sub {
+	    foreach (split(/\n/, $_[0])) {
+		$log->errorf('%s=> %s', $logPrefix, $_);
+	    }
+	}
+	)
+	||
+	die "@{$cmdp}: $!";
 }

@@ -1,0 +1,8 @@
+libmarpa for Debian
+-------------------
+
+Source package is extracted from the Marpa::R2 CPAN tarball.
+Please refer to Marpa::R2 link at http://search.cpan.org/~jkegl/.
+
+ -- Jean-Damien Durand <jeandamiendurand@free.fr>  Fri, 18 Apr 2014 11:39:02 +0200
+
