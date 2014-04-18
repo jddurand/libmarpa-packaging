@@ -3,14 +3,15 @@ use strict;
 use diagnostics;
 use LWP::Simple;
 use File::Temp qw/tempdir/;
-use File::Slurp;
-use File::Basename;
+use File::Slurp qw/read_file/;
+use File::Basename qw/basename/;
 use File::Spec;
-use File::Copy;
+use File::Copy qw/move/;
+use File::Copy::Recursive qw/dircopy/;
 use File::Remove qw/remove/;
-use File::Find;
-use File::stat;
-use File::chmod;
+use File::Find qw/find/;
+use File::stat qw/stat/;
+use File::chmod qw/chmod/;
 use Data::Dumper;
 use Getopt::Long;
 use Log::Log4perl qw/:easy/;
@@ -251,17 +252,27 @@ sub debianize {
 
     my %dirsFormat = (
 	libmarpa_dist => 'libmarpa-%s',
-	libmarpa_doc_dist => 'libmarpa-%s',
+	libmarpa_doc_dist => 'libmarpa-doc-%s',
 	);
 
     my %tarsFormat = (
 	libmarpa_dist => 'libmarpa_%s',
-	libmarpa_doc_dist => 'libmarpa_%s',
+	libmarpa_doc_dist => 'libmarpa-doc_%s',
 	);
 
     my %dirsTemplate = (
 	libmarpa_dist => 'libmarpa',
 	libmarpa_doc_dist => 'libmarpadoc',
+	);
+
+    my %pkgType = (
+	libmarpa_dist => 'library',
+	libmarpa_doc_dist => 'indep',
+	);
+
+    my %pkgName = (
+	libmarpa_dist => 'libmarpa',
+	libmarpa_doc_dist => 'libmarpa-doc',
 	);
 
     foreach (keys %{$dirsp}) {
@@ -310,6 +321,17 @@ sub debianize {
 		);
 	    $tar->write($origTarball, COMPRESS_GZIP);
 	}
+	#
+	# For doc, the only way to get it properly is to have a libmarpa-doc-x.y.y.orig directory
+	#
+	if ($dir eq 'libmarpa_doc_dist') {
+	    #
+	    # Move to temporary directory for the archive creation
+	    #
+	    my $docDir = File::Spec->catdir($tmpDir, sprintf($dirsFormat{$dir}, "$optsp->{libMarpaVersion}") . '.orig');
+	    $log->debugf('[%s] Copying %s to %s', $logPrefix, $newTopDir, $docDir);
+	    dircopy($newTopDir, $docDir);
+	}
 	{
 	    #
 	    # Move to directory containing source to package
@@ -319,8 +341,9 @@ sub debianize {
 	    #
 	    # Debianize using our templates
 	    #
-	    my @dh_make = qw/dh_make --copyright lgpl3 --library --createorig --yes/;
+	    my @dh_make = qw/dh_make --copyright lgpl3 --createorig --yes/;
 	    push(@dh_make, '--templates', File::Spec->catdir($cwd, 'templates', $dirsTemplate{$dir}, 'debian'));
+	    push(@dh_make, '--' . $pkgType{$dir});
 	    _system(\@dh_make, $logPrefix);
 	    #
 	    # Redo the changelog
@@ -330,7 +353,7 @@ sub debianize {
 		$log->debugf('[%s] Unlinking %s', $logPrefix, $changelog);
 		unlink($changelog) || $log->warnf('[%s] Cannot unlink %s, %s', $logPrefix, $changelog, $!);
 	    }
-	    my @dch_changelog = ('dch', '--create', '--package', 'libmarpa', '--newversion', "$revision", "Release of libmarpa version $optsp->{libMarpaVersion}");
+	    my @dch_changelog = ('dch', '--create', '--package', $pkgName{$dir}, '--newversion', "$revision", "Release of $pkgName{$dir} version $optsp->{libMarpaVersion}");
 	    _system(\@dch_changelog, $logPrefix);
 
 	    $log->debugf('[%s] Changing UNRELEASED to unstable in %s', $logPrefix, $changelog);

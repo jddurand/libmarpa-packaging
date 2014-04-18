@@ -1,5 +1,5 @@
-Source: libmarpa
-Section: unknown
+Source: libmarpa-doc
+Section: doc
 Priority: optional
 Maintainer: Jean-Damien Durand <jeandamiendurand@free.fr>
 Build-Depends: debhelper (>= 9), autotools-dev
@@ -8,7 +8,7 @@ Homepage: http://github.com/jeffreykegler/Marpa--R2/
 Vcs-Git: git://github.com/jeffreykegler/Marpa--R2.git
 Vcs-Browser: http://github.com/jeffreykegler/Marpa--R2/
 
-Package: libmarpa
+Package: libmarpa-doc
 Architecture: all
 Depends: ${misc:Depends}
 Description: Parse any language you can describe in BNF - development files
