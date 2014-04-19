@@ -498,7 +498,7 @@ sub _system {
     $logPrefix //= '';
     $logPrefix = "[$logPrefix] " if ($logPrefix);
 
-    $log->infof('%sExecuting command: %s', $logPrefix, join(' ', @{$cmdp}));
+    $log->infof('%sExecuting command (string evaluation): %s', $logPrefix, join(' ', @{$cmdp}));
     if ($in) {
 	$log->debugf('%sExecution detail: %s, with input: \'%s\'', $logPrefix, $cmdp, $in);
     } else {
