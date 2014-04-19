@@ -286,7 +286,7 @@ sub debianize {
 
     my %dirsTemplate = (
 	libmarpa_dist => 'libmarpa',
-	libmarpa_doc_dist => 'libmarpadoc',
+	libmarpa_doc_dist => 'libmarpa-doc',
 	);
 
     my %pkgType = (
