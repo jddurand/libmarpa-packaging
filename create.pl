@@ -10,7 +10,7 @@ use File::Copy qw/move/;
 use File::Copy::Recursive qw/dircopy/;
 use File::Remove qw/remove/;
 use File::Find qw/find/;
-use File::stat qw/stat/;
+use File::stat qw/stat lstat/;
 use File::chmod qw/chmod/;
 use File::HomeDir qw/my_home/;
 use Data::Dumper;
@@ -19,6 +19,7 @@ use Log::Log4perl qw/:easy/;
 use Log::Any::Adapter;
 use Log::Any qw/$log/;
 use URI;
+use Fcntl ':mode';
 use Archive::Tar;
 use Archive::Tar::Constant qw/FILE/;
 use Cwd qw/getcwd abs_path/;
@@ -33,6 +34,13 @@ our $LICENSE = 'lgpl3';
 our $COPYRIGHT = "(c) 2014 @AUTHORS";
 our $VERSION = '1.0';
 our $MAP_FILENAME = 'map.txt';
+verifTypes();
+our %TYPE = (&S_IFDIR  => 'd',
+	     &S_IFCHR  => 'c',
+	     &S_IFBLK  => 'b',
+	     &S_IFREG  => '-',
+	     &S_IFLNK  => 'l',
+	     &S_IFSOCK =>'s');
 
 # -------
 # Options
@@ -462,6 +470,32 @@ sub debianize {
 	    #
 	    my @debuild = ('debuild', '-us', '-uc');
 	    _system(\@debuild, $logPrefix);
+	    #
+	    # Display the content of debian/tmp
+	    #
+	    my $tmp = File::Spec->catdir($newTopDir, 'debian', $pkgName{$dir});
+	    $log->debugf('[%s] %s content', $logPrefix, $tmp);
+	    find(
+		{
+		    no_chdir => 1,
+		    wanted => sub {
+			my $file = $_;
+			my $st = stat($file);
+			if ($st) {
+			    my $mtime = localtime($st->mtime);   # scalar context needed
+			    $log->debugf('[%s] %s %s %s %10s %s %s',
+					 $logPrefix,
+					 strmode($st->mode),
+					 getpwuid($st->uid) || $st->uid,
+					 getgrgid($st->gid) || $st->gid,
+					 $st->size,
+					 $mtime,
+					 File::Spec->abs2rel($file, $tmp));
+			}
+		    }
+		},
+		$tmp
+		);
 	}
 	{
 	    $log->debugf('[%s] Moving to %s', $logPrefix, $optsp->{repository});
@@ -488,7 +522,7 @@ sub debianize {
 				    $remove{$pkg} //= ['reprepro', '-Vb', $reppath, 'remove', 'unstable', $pkg];
 				    $include{$_} //= ['reprepro', '-Vb', $reppath, "include$ext", 'unstable', $_];
 				    if ($ext eq 'deb') {
-					$log->debugf('Debian package scheduled for insertion: %s', $_);
+					$log->debugf('[%s] Debian package scheduled for insertion: %s', $logPrefix, $_);
 					_system(['dpkg', '-c', $_], $logPrefix);
 				    }
 				}
@@ -542,4 +576,52 @@ sub _system {
 	||
 	die "@{$cmdp}: $!";
     return ($out, $err);
+}
+
+sub o {
+    my ($mode, $xr, $xid) = @_;
+
+    return (($mode & ($xr | $xid)) == ($xr | $xid)) ? 's' : ($mode & $xr) ? 'x' : ($mode & $xid) ? 'S' : '-';
+}
+
+
+sub strmode {
+    my ($mode) = @_;
+
+    return
+	($TYPE{$mode & S_IFMT} || '?')
+        . (($mode & S_IRUSR) ? 'r' : '-')
+        . (($mode & S_IWUSR) ? 'w' : '-')
+        . o($mode, S_IXUSR, S_ISUID)
+        . (($mode & S_IRGRP) ? 'r' : '-')
+        . (($mode & S_IWGRP) ? 'w' : '-')
+        . o($mode, S_IXGRP, S_ISGID)
+        . (($mode & S_IROTH) ? 'r' : '-')
+        . (($mode & S_IWOTH) ? 'w' : '-')
+        . o($mode, S_IXOTH, S_ISVTX);
+}
+
+sub verifTypes {
+    #
+    # C.f. http://www.perlmonks.org/?abspart=1;displaytype=displaycode;node_id=895829;part=1
+    #
+    eval "sub S_IFDIR  = { return 0; }" if (! defined(eval {S_IFDIR}));
+    eval "sub S_IFCHR  = { return 0; }" if (! defined(eval {S_IFCHR}));
+    eval "sub S_IFBLK  = { return 0; }" if (! defined(eval {S_IFBLK}));
+    eval "sub S_IFREG  = { return 0; }" if (! defined(eval {S_IFREG}));
+    eval "sub S_IFLNK  = { return 0; }" if (! defined(eval {S_IFLNK}));
+    eval "sub S_IFSOCK = { return 0; }" if (! defined(eval {S_IFSOCK}));
+    eval "sub S_IFMT   = { return 0; }" if (! defined(eval {S_IFMT}));
+    eval "sub S_IRUSR  = { return 0; }" if (! defined(eval {S_IRUSR}));
+    eval "sub S_IWUSR  = { return 0; }" if (! defined(eval {S_IWUSR}));
+    eval "sub S_IXUSR  = { return 0; }" if (! defined(eval {S_IXUSR}));
+    eval "sub S_ISUID  = { return 0; }" if (! defined(eval {S_ISUID}));
+    eval "sub S_IRGRP  = { return 0; }" if (! defined(eval {S_IRGRP}));
+    eval "sub S_IWGRP  = { return 0; }" if (! defined(eval {S_IWGRP}));
+    eval "sub S_IXGRP  = { return 0; }" if (! defined(eval {S_IXGRP}));
+    eval "sub S_ISGID  = { return 0; }" if (! defined(eval {S_ISGID}));
+    eval "sub S_IROTH  = { return 0; }" if (! defined(eval {S_IROTH}));
+    eval "sub S_IWOTH  = { return 0; }" if (! defined(eval {S_IWOTH}));
+    eval "sub S_IXOTH  = { return 0; }" if (! defined(eval {S_IXOTH}));
+    eval "sub S_ISVTX  = { return 0; }" if (! defined(eval {S_ISVTX}));
 }
