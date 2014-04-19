@@ -487,6 +487,10 @@ sub debianize {
 				    $pkg =~ s/^([^_]+).*/$1/;
 				    $remove{$pkg} //= ['reprepro', '-Vb', $reppath, 'remove', 'unstable', $pkg];
 				    $include{$_} //= ['reprepro', '-Vb', $reppath, "include$ext", 'unstable', $_];
+				    if ($ext eq 'deb') {
+					$log->debugf('Debian package scheduled for insertion: %s', $_);
+					_system(['dpkg', '-c', $_], $logPrefix);
+				    }
 				}
 			    }
 			},
