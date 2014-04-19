@@ -28,9 +28,11 @@ use POSIX qw/EXIT_SUCCESS EXIT_FAILURE/;
 # ---------
 # Constants
 # ---------
+our @AUTHORS = ('Jean-Damien Durand <jeandamiendurand@free.fr>');
+our $LICENSE = 'lgpl3';
+our $COPYRIGHT = "(c) 2014 @AUTHORS";
 our $VERSION = '1.0';
 our $MAP_FILENAME = 'map.txt';
-our $TMP_DIRNAME = tempdir(CLEANUP => 1);
 
 # -------
 # Options
@@ -40,6 +42,7 @@ my %opts = (
     mapFilename     => $MAP_FILENAME,
     repository      => File::Spec->catdir(File::HomeDir->my_home, 'debian', 'marpa'),
     logLevel        => 'INFO',
+    cleanup         => 1,
     debian          => 1,
 );
 my %cmdOpts = (
@@ -47,11 +50,13 @@ my %cmdOpts = (
     'mapFilename=s'     => sub { $opts{mapFilename} = $_[1] },
     'repository=s'      => sub { $opts{repository} = $_[1] },
     'debian!'           => sub { $opts{debian} = $_[1] },
+    'cleanup!'          => sub { $opts{cleanup} = $_[1] },
     'help!'             => sub { help(\%opts) },
     'verbose!'          => sub { $opts{logLevel} = $_[1] ? 'DEBUG' : 'WARN' },
     );
 GetOptions (%cmdOpts) || die "Error in command line arguments";
 $opts{repository} = abs_path($opts{repository});
+our $TMP_DIRNAME = tempdir(CLEANUP => $opts{cleanup});
 
 # ------------
 # Init logging
@@ -70,6 +75,8 @@ loadMap($MAP_FILENAME, \%map);
 if (! $opts{libMarpaVersion}) {
     $opts{libMarpaVersion} = (sort {$a =~ s/\.//g; $b =~ s/\.//g; $b <=> $a} keys %map)[0];
 }
+
+$log->infof('Options in use: %s', \%opts);
 
 # ------------
 # Load tarball
@@ -136,26 +143,36 @@ sub help {
     my ($optsp) = @_;
 
     print <<HELP;
+
 Usage: $^X $0 [options]
 
 where options are all optional and can be:
 
---map=mapFilename             Mapping libmarpa version <=> marpa CPAN tarball
-                              Default value: $optsp->{mapFilename}
+  --map=mapFilename             Mapping libmarpa version <=> marpa CPAN tarball
+                                Default value: $optsp->{mapFilename}
 
---version=libMarpaVersion     libmarpa version to build.
-                              Default value: highest numeric loaded from mapFilename
+  --version=libMarpaVersion     libmarpa version to build.
+                                Default value: highest numeric loaded from mapFilename
 
---verbose                     Verbose mode.
-                              Default value: 0
+  --[no]verbose                 Verbose mode.
+                                Default value: 0
 
---debian                      Debianize.
-                              Default value: $optsp->{debian}
+  --[no]debian                  Debianize.
+                                Default value: $optsp->{debian}
 
---repository                  Reprepro managed debian repository.
-                              Default value: $optsp->{repository}
+  --[no]cleanup                 Cleanup temporary directories.
+                                Default value: $optsp->{cleanup}
 
---help                        This help.
+  --repository                  Reprepro managed debian repository.
+                                Default value: $optsp->{repository}
+
+  --[no]help                    This help.
+
+Version  : $VERSION
+License  : $LICENSE
+
+$COPYRIGHT
+
 HELP
     exit(EXIT_SUCCESS);
 }
@@ -292,7 +309,7 @@ sub debianize {
 
 	my $cwd = getcwd();
 
-	my $tmpDir = tempdir(CLEANUP => 1);
+	my $tmpDir = tempdir(CLEANUP => $optsp->{cleanup});
 	$log->debugf('[%s] New temporary directory %s', $logPrefix, $tmpDir);
 	my $newTopDir = File::Spec->catdir($tmpDir, sprintf($dirsFormat{$dir}, "$optsp->{libMarpaVersion}"));
 	#
