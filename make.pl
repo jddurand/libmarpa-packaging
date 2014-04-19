@@ -440,20 +440,27 @@ sub debianize {
 	    chdir($optsp->{repgit}) || die "Cannot chdir to $optsp->{repgit}, $!";
 	    $log->debugf('[%s] Looking for .deb and .desc for reprepro inclusion', $logPrefix, $cwd);
 	    my $reppath = File::Spec->catdir($optsp->{repgit}, $optsp->{reprepro});
-	    find(
-		{
-		    no_chdir => 1,
-		    wanted => sub {
-			if (/\.(deb|dsc)$/) {
-			    my @remove = ('reprepro', '-Vb', $reppath, 'remove', 'unstable', $pkgName{$dir});
-			    _system(\@remove, $logPrefix);
-			    my @include = ('reprepro', '-Vb', $reppath, "include$1", 'unstable', $_);
-			    _system(\@include, $logPrefix);
+	    #
+	    # dsc first, then deb - the order is important
+	    #
+	    foreach (qw/dsc deb/) {
+		my $ext = $_;
+		my $quotedExt = quotemeta($ext);
+		find(
+		    {
+			no_chdir => 1,
+			wanted => sub {
+			    if (/\.$quotedExt$/) {
+				# my @remove = ('reprepro', '-Vb', $reppath, 'remove', 'unstable', $pkgName{$dir});
+				# _system(\@remove, $logPrefix);
+				my @include = ('reprepro', '-Vb', $reppath, "include$ext", 'unstable', $_);
+				_system(\@include, $logPrefix);
+			    }
 			}
-		    }
-		},
-		$tmpDir
-		);
+		    },
+		    $tmpDir
+		    );
+	    }
 	}
 
 	$log->debugf('[%s] Moving back to %s', $logPrefix, $cwd);
