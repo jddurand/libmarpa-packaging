@@ -11,7 +11,7 @@ Vcs-Browser: http://github.com/jeffreykegler/Marpa--R2/
 Package: libmarpa-doc
 Architecture: all
 Depends: ${misc:Depends}
-Description: Parse any language you can describe in BNF - development files
+Description: Parse any language you can describe in BNF - documentation files
  Marpa is a new parsing algorithm with a decades-long heritage.
  Its lineage starts with the algorithm invented by Jay Earley.
  Marpa is the first algorithm to combine the improvements to Earley's algorithm
