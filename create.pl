@@ -219,7 +219,7 @@ sub extractCPANTarball {
     $log->debugf('Moving back to to %s', $cwd);
     chdir($cwd) || die "Cannot chdir to $cwd, $!";
 
-    $log->debugf('Making sure all files are writable in the extracted tarbal');
+    $log->debugf('Making sure all files are writable in the extracted tarball');
     find(
 	{
 	    no_chdir => 1,
@@ -303,14 +303,14 @@ sub debianize {
 	my $dir = $_;
 
 	my $logPrefix = "debian $dir";
-
-	$log->infof('[%s] Processing %s', 'debian', $dir);
 	my $revision = "$optsp->{libMarpaVersion}-1";
-
 	my $cwd = getcwd();
 
 	my $tmpDir = tempdir(CLEANUP => $optsp->{cleanup});
 	$log->debugf('[%s] New temporary directory %s', $logPrefix, $tmpDir);
+
+	$log->infof('[%s] Processing %s in %s', 'debian', $dir, $tmpDir);
+
 	my $newTopDir = File::Spec->catdir($tmpDir, sprintf($dirsFormat{$dir}, "$optsp->{libMarpaVersion}"));
 	#
 	# Create newTopDir
@@ -366,9 +366,24 @@ sub debianize {
 	    # Debianize using our templates
 	    #
 	    my @dh_make = qw/dh_make --copyright lgpl3 --createorig --yes/;
-	    push(@dh_make, '--templates', File::Spec->catdir($cwd, 'templates', $dirsTemplate{$dir}, 'debian'));
+	    my $templatesDir = File::Spec->catdir($cwd, 'templates', $dirsTemplate{$dir}, 'debian');
+	    push(@dh_make, '--templates', $templatesDir);
 	    push(@dh_make, '--' . $pkgType{$dir});
 	    _system(\@dh_make, $logPrefix);
+	    #
+	    # Make sure that files that are executable in our templates are also executed after the copy
+	    #
+	    find(
+		{
+		    no_chdir => 1,
+		    wanted => sub {
+			if (-f $_ && -x $_) {
+			    my $chmodFile = File::Spec->catfile($newTopDir, 'debian', basename($_));
+			    $log->debugf('[%s] Making sure %s is executable', $logPrefix, $chmodFile);
+			    chmod('+x', $chmodFile);
+			}
+		    }
+		}, $templatesDir);
 	    #
 	    # Redo the changelog
 	    #
