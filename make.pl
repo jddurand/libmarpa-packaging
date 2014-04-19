@@ -12,6 +12,7 @@ use File::Remove qw/remove/;
 use File::Find qw/find/;
 use File::stat qw/stat/;
 use File::chmod qw/chmod/;
+use File::HomeDir qw/my_home/;
 use Data::Dumper;
 use Getopt::Long;
 use Log::Log4perl qw/:easy/;
@@ -37,22 +38,20 @@ our $TMP_DIRNAME = tempdir(CLEANUP => 1);
 my %opts = (
     libMarpaVersion => 0,
     mapFilename     => $MAP_FILENAME,
-    repgit          => File::Spec->catdir(File::Spec->updir, 'jddurand.github.io'),
-    reprepro        => 'reprepro',
+    repository      => File::Spec->catdir(File::HomeDir->my_home, 'debian', 'marpa'),
     logLevel        => 'INFO',
     debian          => 1,
 );
 my %cmdOpts = (
     'version=i'         => sub { $opts{libMarpaVersion} = $_[1] },
     'mapFilename=s'     => sub { $opts{mapFilename} = $_[1] },
-    'repgit=s'          => sub { $opts{repgit} = $_[1] },
-    'reprepro=s'        => sub { $opts{reprepro} = $_[1] },
+    'repository=s'      => sub { $opts{repository} = $_[1] },
     'debian!'           => sub { $opts{debian} = $_[1] },
     'help!'             => sub { help(\%opts) },
     'verbose!'          => sub { $opts{logLevel} = $_[1] ? 'DEBUG' : 'WARN' },
     );
 GetOptions (%cmdOpts) || die "Error in command line arguments";
-$opts{repgit} = abs_path($opts{repgit});
+$opts{repository} = abs_path($opts{repository});
 
 # ------------
 # Init logging
@@ -153,11 +152,8 @@ where options are all optional and can be:
 --debian                      Debianize.
                               Default value: $optsp->{debian}
 
---repgit                      git local top directory hosting debian repository.
-                              Default value: $optsp->{repgit}
-
---reprepro                    Reprepro managed repository, relative to repgit.
-                              Default value: $optsp->{reprepro}
+--repository                  Reprepro managed debian repository.
+                              Default value: $optsp->{repository}
 
 --help                        This help.
 HELP
@@ -436,30 +432,41 @@ sub debianize {
 	    _system(\@debuild, $logPrefix);
 	}
 	{
-	    $log->debugf('[%s] Moving to %s', $logPrefix, $optsp->{repgit});
-	    chdir($optsp->{repgit}) || die "Cannot chdir to $optsp->{repgit}, $!";
+	    $log->debugf('[%s] Moving to %s', $logPrefix, $optsp->{repository});
+	    chdir($optsp->{repository}) || die "Cannot chdir to $optsp->{repository}, $!";
 	    $log->debugf('[%s] Looking for .deb and .desc for reprepro inclusion', $logPrefix, $cwd);
-	    my $reppath = File::Spec->catdir($optsp->{repgit}, $optsp->{reprepro});
+	    my $reppath = $optsp->{repository};
 	    #
-	    # dsc first, then deb - the order is important
+	    # removal first, then inclusion
 	    #
-	    foreach (qw/dsc deb/) {
-		my $ext = $_;
-		my $quotedExt = quotemeta($ext);
-		find(
-		    {
-			no_chdir => 1,
-			wanted => sub {
-			    if (/\.$quotedExt$/) {
-				# my @remove = ('reprepro', '-Vb', $reppath, 'remove', 'unstable', $pkgName{$dir});
-				# _system(\@remove, $logPrefix);
-				my @include = ('reprepro', '-Vb', $reppath, "include$ext", 'unstable', $_);
-				_system(\@include, $logPrefix);
+	    my %remove = ();
+	    my %include = ();
+	    foreach (qw/remove include/) {
+		my $action = $_;
+		foreach (qw/dsc deb/) {
+		    my $ext = $_;
+		    my $quotedExt = quotemeta($ext);
+		    find(
+			{
+			    no_chdir => 1,
+			    wanted => sub {
+				if (/\.$quotedExt$/) {
+				    my $pkg = basename($_);
+				    $pkg =~ s/^([^_]+).*/$1/;
+				    $remove{$pkg} //= ['reprepro', '-Vb', $reppath, 'remove', 'unstable', $pkg];
+				    $include{$_} //= ['reprepro', '-Vb', $reppath, "include$ext", 'unstable', $_];
+				}
 			    }
-			}
-		    },
-		    $tmpDir
-		    );
+			},
+			$tmpDir
+			);
+		}
+	    }
+	    foreach (keys %remove) {
+		_system($remove{$_}, $logPrefix);
+	    }
+	    foreach (keys %include) {
+		_system($include{$_}, $logPrefix);
 	    }
 	}
 
@@ -474,24 +481,29 @@ sub _system {
     $logPrefix //= '';
     $logPrefix = "[$logPrefix] " if ($logPrefix);
 
+    $log->infof('%sExecuting command: %s', $logPrefix, join(' ', @{$cmdp}));
     if ($in) {
-	$log->debugf('%sExecuting command %s with input: %s', $logPrefix, $cmdp, $in);
+	$log->debugf('%sExecution detail: %s, with input: \'%s\'', $logPrefix, $cmdp, $in);
     } else {
-	$log->debugf('%sExecuting command %s', $logPrefix, $cmdp);
+	$log->debugf('%sExecution detail: %s', $logPrefix, $cmdp);
     }
+    my ($out, $err) = ('', '');
     run($cmdp,
 	\$in,
 	sub {
+	    $out .= $_[0];
 	    foreach (split(/\n/, $_[0])) {
-		$log->infof('%s=> %s', $logPrefix, $_);
+		$log->debugf('%s=> %s', $logPrefix, $_);
 	    }
 	},
 	sub {
+	    $err .= $_[0];
 	    foreach (split(/\n/, $_[0])) {
-		$log->errorf('%s=> %s', $logPrefix, $_);
+		$log->debugf('%s=> %s', $logPrefix, $_);
 	    }
 	}
 	)
 	||
 	die "@{$cmdp}: $!";
+    return ($out, $err);
 }
