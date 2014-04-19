@@ -143,7 +143,7 @@ where options are all optional and can be:
 --map=mapFilename             Mapping libmarpa version <=> marpa CPAN tarball
                               Default value: $optsp->{mapFilename}
 
---version=libMarpaVersio n    libmarpa version to build.
+--version=libMarpaVersion     libmarpa version to build.
                               Default value: highest numeric loaded from mapFilename
 
 --verbose                     Verbose mode.
