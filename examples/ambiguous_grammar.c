@@ -162,9 +162,16 @@ int main() {
     /* ----------------- */
     CREATE_VALUATOR(v, t, g);
 
+
     marpa_v_rule_is_valued_set(v, op_rule_id, 1);
     marpa_v_rule_is_valued_set(v, start_rule_id, 1);
     marpa_v_rule_is_valued_set(v, number_rule_id, 1);
+
+    /*
+     * In the future, maybe:
+     marpa_v_valued_force(v);
+    */
+
 
     while (nextok) {
       Marpa_Step_Type type     = marpa_v_step(v);
