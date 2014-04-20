@@ -71,12 +71,9 @@ int main() {
   int                 plus_token_value     = 6;      /* Indice 6 in token_values */
   int                 multiply_token_value = 7;      /* Indice 7 in token_values */
 
-  /* Configuration initialisation */
-  marpa_c_init(&marpa_configuration);     /* never fails as per the doc */
-
-  /* Grammar creation */
-  g = marpa_g_new(&marpa_configuration);
-  _check(marpa_c_error(&marpa_configuration, NULL), "marpa_g_new()", g == NULL);
+  
+  INIT_CONFIG(marpa_configuration);
+  CREATE_GRAMMAR(g, marpa_configuration);
 
   /* Symbols creation */
   CREATE_SYMBOL(S, g);
@@ -94,16 +91,9 @@ int main() {
 
   PRECOMPUTE(g);
 
-  r = marpa_r_new(g);
-  if (r == NULL) {
-    fprintf(stderr, "marpa_r_new() failure\n");
-    exit(EXIT_FAILURE);
-  }
+  CREATE_RECOGNIZER(g, r);
 
-  if (marpa_r_start_input(r) < 0) {
-    fprintf(stderr, "marpa_r_start_input() failure\n");
-    exit(EXIT_FAILURE);
-  }
+  START_INPUT(g, r);
 
   /*
     The numbers from 1 to 3 are themselves --
@@ -111,49 +101,34 @@ int main() {
     Important: zero cannot be itself!
   */
 
-  ALTERNATIVE(r, number, 2, 1);
-  EARLEME_COMPLETE(r);
-  ALTERNATIVE(r, op, minus_token_value, 1);
-  EARLEME_COMPLETE(r);
-  ALTERNATIVE(r, number, zero, 1);
-  EARLEME_COMPLETE(r);
-  ALTERNATIVE(r, op, multiply_token_value, 1);
-  EARLEME_COMPLETE(r);
-  ALTERNATIVE(r, number, 3, 1);
-  EARLEME_COMPLETE(r);
-  ALTERNATIVE(r, op, plus_token_value, 1);
-  EARLEME_COMPLETE(r);
-  ALTERNATIVE(r, number, 1, 1);
-  EARLEME_COMPLETE(r);
+  ALTERNATIVE(g, r, number, 2, 1);
+  EARLEME_COMPLETE(g, r);
+  ALTERNATIVE(g, r, op, minus_token_value, 1);
+  EARLEME_COMPLETE(g, r);
+  ALTERNATIVE(g, r, number, zero, 1);
+  EARLEME_COMPLETE(g, r);
+  ALTERNATIVE(g, r, op, multiply_token_value, 1);
+  EARLEME_COMPLETE(g, r);
+  ALTERNATIVE(g, r, number, 3, 1);
+  EARLEME_COMPLETE(g, r);
+  ALTERNATIVE(g, r, op, plus_token_value, 1);
+  EARLEME_COMPLETE(g, r);
+  ALTERNATIVE(g, r, number, 1, 1);
+  EARLEME_COMPLETE(g, r);
 
-  latest_earley_set_ID = marpa_r_latest_earley_set(r);
+  latest_earley_set_ID = marpa_r_latest_earley_set(r); /* This function always succeed as per doc */
 
-  bocage = marpa_b_new(r, latest_earley_set_ID);
-  if (bocage == NULL) {
-    fprintf(stderr, "marpa_b_new() failure\n");
-    exit(EXIT_FAILURE);
-  }
+  CREATE_BOCAGE(g, r, latest_earley_set_ID, bocage);
 
-  order = marpa_o_new(bocage);
-  if (order == NULL) {
-    fprintf(stderr, "marpa_o_new() failure\n");
-    exit(EXIT_FAILURE);
-  }
+  CREATE_ORDER(g, bocage, order);
 
-  tree = marpa_t_new(order);
-  if (tree == NULL) {
-    fprintf(stderr, "marpa_t_new() failure\n");
-    exit(EXIT_FAILURE);
-  }
+  CREATE_TREE(g, order, tree);
 
   while (marpa_t_next(tree) >= 0) {
     int nextok = 1;
     Marpa_Value valuator;
 
-    if ((valuator = marpa_v_new(tree)) == NULL) {
-      fprintf(stderr, "marpa_v_new() failure\n");
-      exit(EXIT_FAILURE);
-    }
+    CREATE_VALUATOR(g, tree, valuator);
 
     marpa_v_symbol_is_valued_set(valuator, op_rule_id, 1);
     marpa_v_symbol_is_valued_set(valuator, start_rule_id, 1);

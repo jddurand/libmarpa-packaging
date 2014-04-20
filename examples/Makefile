@@ -6,7 +6,7 @@ all: ambiguous_grammar
 ambiguous_grammar: ambiguous_grammar.o
 	$(CC) -o $@ $^ $(LDFLAGS)
 
-%.o: %.c
+%.o: %.c thin_macros.h
 	$(CC) -o $@ -c $< $(CFLAGS)
 
 clean:
