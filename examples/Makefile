@@ -1,0 +1,15 @@
+LDFLAGS+= -lmarpa
+CFLAGS+= -Wall -g
+
+all: ambiguous_grammar
+
+ambiguous_grammar: ambiguous_grammar.o
+	$(CC) -o $@ $^ $(LDFLAGS)
+
+%.o: %.c
+	$(CC) -o $@ -c $< $(CFLAGS)
+
+clean:
+	rm -f *.o core
+
+mrproper: clean
