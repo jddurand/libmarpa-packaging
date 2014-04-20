@@ -47,11 +47,17 @@ struct marpa_error_description_s {
 extern const struct marpa_error_description_s marpa_error_description[];
 
 int main() {
-  Marpa_Config        marpa_configuration;
+  /* Marpa variables */
+  Marpa_Config        c;
   Marpa_Grammar       g;
   Marpa_Symbol_ID     S, E, op, number;
   Marpa_Rule_ID       start_rule_id, op_rule_id, number_rule_id;
   Marpa_Recognizer    r;
+  Marpa_Earley_Set_ID latest_earley_set_ID;
+  Marpa_Bocage        b;
+  Marpa_Order         o;
+  Marpa_Tree          t;
+  /* User variables */
   char               *token_values[] = { "0", "1", "2", "3", "0", "-", "+", "*" };
   s_stack_            expected_results[5] = {
     {"(2-(0*(3+1))) == 2", 2},
@@ -60,10 +66,6 @@ int main() {
     {"((2-0)*(3+1)) == 8", 8},
     {"(2-((0*3)+1)) == 1", 1}
   };
-  Marpa_Earley_Set_ID latest_earley_set_ID;
-  Marpa_Bocage        bocage;
-  Marpa_Order         order;
-  Marpa_Tree          tree;
   s_stack_           *stackp = NULL;
   int                 stacksize = -1;
   int                 zero                 = 4;      /* Indice 4 in token_values */
@@ -71,87 +73,117 @@ int main() {
   int                 plus_token_value     = 6;      /* Indice 6 in token_values */
   int                 multiply_token_value = 7;      /* Indice 7 in token_values */
 
-  
-  INIT_CONFIG(marpa_configuration);
-  CREATE_GRAMMAR(g, marpa_configuration);
+  /* Initialize configuration */
+  /* ------------------------ */
+  INIT_CONFIG(c);
 
-  /* Symbols creation */
+  /* Create grammar */
+  /* -------------- */
+  CREATE_GRAMMAR(g, c);
+
+  /* Create symbols */
+  /* -------------- */
   CREATE_SYMBOL(S, g);
   CREATE_SYMBOL(E, g);
   CREATE_SYMBOL(op, g);
   CREATE_SYMBOL(number, g);
 
-  /* ::start ::= S */
+  /* Set start symbol */
+  /* ---------------- */
   SET_START_SYMBOL(S, g);
 
-  /* Rules creation */
-  {Marpa_Symbol_ID rhs[] = { E };        CREATE_RULE(start_rule_id,  g, S, rhs, ARRAY_LENGTH(rhs));}
-  {Marpa_Symbol_ID rhs[] = { E, op, E }; CREATE_RULE(op_rule_id,     g, E, rhs, ARRAY_LENGTH(rhs));};
-  {Marpa_Symbol_ID rhs[] = { number };   CREATE_RULE(number_rule_id, g, E, rhs, ARRAY_LENGTH(rhs));}
+  /* Create rules */
+  /* ------------ */
+  {
+    Marpa_Symbol_ID rhs[] = { E };
+    CREATE_RULE(start_rule_id,  g, S, rhs, ARRAY_LENGTH(rhs));
+  }
+  {
+    Marpa_Symbol_ID rhs[] = { E, op, E };
+    CREATE_RULE(op_rule_id,     g, E, rhs, ARRAY_LENGTH(rhs));
+  }
+  {
+    Marpa_Symbol_ID rhs[] = { number };
+    CREATE_RULE(number_rule_id, g, E, rhs, ARRAY_LENGTH(rhs));
+  }
 
+  /* Precompute grammar */
+  /* ------------------ */
   PRECOMPUTE(g);
 
-  CREATE_RECOGNIZER(g, r);
+  /* Create recognizer */
+  /* ----------------- */
+  CREATE_RECOGNIZER(r, g);
 
-  START_INPUT(g, r);
+  /* Start input */
+  /* ----------- */
+  START_INPUT(r, g);
 
-  /*
-    The numbers from 1 to 3 are themselves --
-    that is, they index their own token value.
-    Important: zero cannot be itself!
-  */
+  /* Feed lexemes : alternative(s) and earleme completion */
+  /* ---------------------------------------------------- */
+  ALTERNATIVE(r, g, number, 2, 1);
+  EARLEME_COMPLETE(r, g);
+  ALTERNATIVE(r, g, op, minus_token_value, 1);
+  EARLEME_COMPLETE(r, g);
+  ALTERNATIVE(r, g, number, zero, 1);
+  EARLEME_COMPLETE(r, g);
+  ALTERNATIVE(r, g, op, multiply_token_value, 1);
+  EARLEME_COMPLETE(r, g);
+  ALTERNATIVE(r, g, number, 3, 1);
+  EARLEME_COMPLETE(r, g);
+  ALTERNATIVE(r, g, op, plus_token_value, 1);
+  EARLEME_COMPLETE(r, g);
+  ALTERNATIVE(r, g, number, 1, 1);
+  EARLEME_COMPLETE(r, g);
 
-  ALTERNATIVE(g, r, number, 2, 1);
-  EARLEME_COMPLETE(g, r);
-  ALTERNATIVE(g, r, op, minus_token_value, 1);
-  EARLEME_COMPLETE(g, r);
-  ALTERNATIVE(g, r, number, zero, 1);
-  EARLEME_COMPLETE(g, r);
-  ALTERNATIVE(g, r, op, multiply_token_value, 1);
-  EARLEME_COMPLETE(g, r);
-  ALTERNATIVE(g, r, number, 3, 1);
-  EARLEME_COMPLETE(g, r);
-  ALTERNATIVE(g, r, op, plus_token_value, 1);
-  EARLEME_COMPLETE(g, r);
-  ALTERNATIVE(g, r, number, 1, 1);
-  EARLEME_COMPLETE(g, r);
-
+  /* Get latest Earley set */
+  /* --------------------- */
   latest_earley_set_ID = marpa_r_latest_earley_set(r); /* This function always succeed as per doc */
 
-  CREATE_BOCAGE(g, r, latest_earley_set_ID, bocage);
+  /* Get full set of parses (this is a bocage) */
+  /* ----------------------------------------- */
+  CREATE_BOCAGE(b, g, r, latest_earley_set_ID);
 
-  CREATE_ORDER(g, bocage, order);
+  /* Parses in a bocage must be ordered before iterating on them */
+  /* ----------------------------------------------------------- */
+  CREATE_ORDER(o, b, g);
 
-  CREATE_TREE(g, order, tree);
+  /* Create iterator on parses */
+  /* ------------------------- */
+  CREATE_TREE(t, o, g);
 
-  while (marpa_t_next(tree) >= 0) {
+  /* Loop until no more parse */
+  /* ------------------------ */
+  while (marpa_t_next(t) >= 0) {
     int nextok = 1;
-    Marpa_Value valuator;
+    Marpa_Value v;
 
-    CREATE_VALUATOR(g, tree, valuator);
+    /* Create a valuator */
+    /* ----------------- */
+    CREATE_VALUATOR(v, t, g);
 
-    marpa_v_symbol_is_valued_set(valuator, op_rule_id, 1);
-    marpa_v_symbol_is_valued_set(valuator, start_rule_id, 1);
-    marpa_v_symbol_is_valued_set(valuator, number_rule_id, 1);
+    marpa_v_rule_is_valued_set(v, op_rule_id, 1);
+    marpa_v_rule_is_valued_set(v, start_rule_id, 1);
+    marpa_v_rule_is_valued_set(v, number_rule_id, 1);
 
     while (nextok) {
-      Marpa_Step_Type type     = marpa_v_step(valuator);
+      Marpa_Step_Type type     = marpa_v_step(v);
 
       switch (type) {
       case MARPA_STEP_TOKEN:
 	{
-	  /* Marpa_Symbol_ID token_id = marpa_v_token(valuator); */ /* unused, but you know you can get it -; */
-	  int token_value_ix       = marpa_v_token_value(valuator);
-	  int arg_n                = marpa_v_result(valuator);
+	  /* Marpa_Symbol_ID token_id = marpa_v_token(v); */ /* unused, but you know you can get it -; */
+	  int token_value_ix       = marpa_v_token_value(v);
+	  int arg_n                = marpa_v_result(v);
 
 	  PUSH_TO_STACK(arg_n, strdup(token_values[token_value_ix]), atoi(token_values[token_value_ix]));
 	  break;
 	}
       case MARPA_STEP_RULE:
 	{
-	  Marpa_Rule_ID rule_id    = marpa_v_rule(valuator);
-	  int arg_0                = marpa_v_arg_0(valuator);
-	  int arg_n                = marpa_v_arg_n(valuator);
+	  Marpa_Rule_ID rule_id    = marpa_v_rule(v);
+	  int arg_0                = marpa_v_arg_0(v);
+	  int arg_n                = marpa_v_arg_n(v);
 
 	  if (rule_id == start_rule_id) {
 	    PUSH_TO_STACK(arg_0, _make_str("%s == %d", stackp[arg_n].string, stackp[arg_n].value), stackp[arg_n].value);
@@ -228,13 +260,13 @@ int main() {
     }
 
     /* Free valuator */
-    marpa_v_unref(valuator);
+    marpa_v_unref(v);
   }
 
   /* Free marpa */
-  marpa_t_unref(tree);
-  marpa_o_unref(order);
-  marpa_b_unref(bocage);
+  marpa_t_unref(t);
+  marpa_o_unref(o);
+  marpa_b_unref(b);
   marpa_r_unref(r);
   marpa_g_unref(g);
 

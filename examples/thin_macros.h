@@ -3,46 +3,46 @@
 
 #define ARRAY_LENGTH(array) (sizeof((array))/sizeof((array)[0]))
 
-#define INIT_CONFIG(config) {			\
-    marpa_c_init(&marpa_configuration);		\
+#define INIT_CONFIG(c) {			\
+    marpa_c_init(&(c));				\
   }
 
-#define CREATE_GRAMMAR(g, config) {					\
-    g = marpa_g_new(&(config));						\
-    _check(marpa_c_error(&(config), NULL), "marpa_g_new()", g == NULL); \
+#define CREATE_GRAMMAR(g, c) {						\
+    g = marpa_g_new(&(c));						\
+    _check(marpa_c_error(&(c), NULL), "marpa_g_new()", g == NULL);	\
   }
 
-#define CREATE_RECOGNIZER(g, r) {					\
+#define CREATE_RECOGNIZER(r, g) {					\
     marpa_g_error_clear(g);						\
     r = marpa_r_new(g);							\
     _check(marpa_g_error(g, NULL), "marpa_r_new()", r == NULL);		\
   }
 
-#define CREATE_SYMBOL(symbolId, g) {					\
+#define CREATE_SYMBOL(id, g) {						\
     marpa_g_error_clear(g);						\
-    symbolId = marpa_g_symbol_new(g);					\
-    _check(marpa_g_error((g), NULL), "marpa_g_symbol_new()", symbolId < 0); \
+    id = marpa_g_symbol_new(g);						\
+    _check(marpa_g_error((g), NULL), "marpa_g_symbol_new()", id < 0);	\
   }
 
-#define CREATE_BOCAGE(g, r, latest_earley_set_ID, b) {			\
+#define CREATE_BOCAGE(b, g, r, latest_earley_set_ID) {			\
     marpa_g_error_clear(g);						\
     b = marpa_b_new((r), latest_earley_set_ID);				\
-    _check(marpa_g_error((g), NULL), "marpa_b_new()", b == NULL); \
+    _check(marpa_g_error((g), NULL), "marpa_b_new()", b == NULL);	\
   }
 
-#define CREATE_ORDER(g, b, o) {						\
+#define CREATE_ORDER(o, b, g) {						\
     marpa_g_error_clear(g);						\
     o = marpa_o_new(b);							\
     _check(marpa_g_error((g), NULL), "marpa_b_new()", o == NULL);	\
   }
 
-#define CREATE_TREE(g, o, t) {						\
+#define CREATE_TREE(t, o, g) {						\
     marpa_g_error_clear(g);						\
     t = marpa_t_new(o);							\
     _check(marpa_g_error((g), NULL), "marpa_t_new()", t == NULL);	\
   }
 
-#define CREATE_VALUATOR(g, t, v) {					\
+#define CREATE_VALUATOR(v, t, g) {					\
     marpa_g_error_clear(g);						\
     v = marpa_v_new(t);							\
     _check(marpa_g_error((g), NULL), "marpa_v_new()", v == NULL);	\
@@ -54,7 +54,7 @@
     _check(marpa_g_error((g), NULL), "marpa_g_rule_new()", ruleId < 0);	\
   }
 
-#define START_INPUT(g, r) {						\
+#define START_INPUT(r, g) {						\
     marpa_g_error_clear(g);						\
     _check(marpa_g_error((g), NULL), "marpa_r_start_input()", marpa_r_start_input(r) < 0); \
   }
@@ -69,12 +69,12 @@
     _check(marpa_g_error((g), NULL), "marpa_g_precompute()", marpa_g_precompute(g) < 0); \
   }
 
-#define ALTERNATIVE(g, r, token_id, value, length) {			\
+#define ALTERNATIVE(r, g, token_id, value, length) {			\
     marpa_g_error_clear(g);						\
     _check(marpa_g_error((g), NULL), "marpa_r_alternative()", marpa_r_alternative((r), (token_id), (value), (length)) != MARPA_ERR_NONE); \
   }
 
-#define EARLEME_COMPLETE(g, r) {					\
+#define EARLEME_COMPLETE(r, g) {					\
     marpa_g_error_clear(g);						\
     _check(marpa_g_error((g), NULL), "marpa_r_earleme_complete()", marpa_r_earleme_complete(r) < 0); \
   }
