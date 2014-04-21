@@ -158,6 +158,7 @@ void  *genericStackGet(genericStack_t *genericStackPtr, unsigned int index)
 void  *genericStackSet(genericStack_t *genericStackPtr, unsigned int index, void *elementPtr)
 {
   const static char *function = "genericStackSet()";
+  size_t minStackSize = index+1;
 
   if (genericStackPtr == NULL) {
     return NULL;
@@ -196,8 +197,8 @@ void  *genericStackSet(genericStack_t *genericStackPtr, unsigned int index, void
     }
     genericStackPtr->buf[index] = newElementPtr;
   }
-  if (genericStackPtr->stackSize < (index+1)) {
-    genericStackPtr->stackSize = index+1;
+  if (genericStackPtr->stackSize < minStackSize) {
+    genericStackPtr->stackSize = minStackSize;
   }
   return genericStackPtr->buf[index];
 }
