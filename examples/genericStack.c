@@ -18,9 +18,12 @@ struct genericStack {
   genericStackFailureCallback_t failureCallback;
   genericStackFreeCallback_t    freeCallback;
   genericStackCopyCallback_t    copyCallback;
+  short                         optionGrowOnSet;
+  short                         optionGrowOnGet;
 };
 
 genericStack_t *genericStackCreate(size_t                        elementSize,
+				   unsigned int                  options,
 				   genericStackFailureCallback_t genericStackFailureCallbackPtr,
 				   genericStackFreeCallback_t    genericStackFreeCallbackPtr,
 				   genericStackCopyCallback_t    genericStackCopyCallbackPtr)
@@ -61,6 +64,8 @@ genericStack_t *genericStackCreate(size_t                        elementSize,
   genericStackPtr->copyCallback    = genericStackCopyCallbackPtr;
   genericStackPtr->freeCallback    = genericStackFreeCallbackPtr;
   genericStackPtr->failureCallback = genericStackFailureCallbackPtr;
+  genericStackPtr->optionGrowOnGet = ((options & GENERICSTACK_OPTION_GROW_ON_GET) == GENERICSTACK_OPTION_GROW_ON_GET) ? 1 : 0;
+  genericStackPtr->optionGrowOnSet = ((options & GENERICSTACK_OPTION_GROW_ON_SET) == GENERICSTACK_OPTION_GROW_ON_SET) ? 1 : 0;
 
   return genericStackPtr;
 }
@@ -106,7 +111,9 @@ size_t genericStackPush(genericStack_t *genericStackPtr, void *elementPtr)
 	}
       }
     }
-    genericStackPtr->buf[genericStackPtr->stackSize] = newElementPtr;
+    genericStackPtr->buf[genericStackPtr->stackSize++] = newElementPtr;
+  } else {
+    genericStackPtr->buf[genericStackPtr->stackSize++] = NULL;
   }
   return 1;
 }
@@ -146,6 +153,11 @@ void  *genericStackGet(genericStack_t *genericStackPtr, unsigned int index)
   if (genericStackPtr == NULL) {
     return NULL;
   }
+  if (index >= genericStackPtr->stackSize && genericStackPtr->optionGrowOnGet == 1) {
+    while (index >= genericStackPtr->stackSize) {
+      genericStackPush(genericStackPtr, NULL);
+    }
+  }
   if (index >= genericStackPtr->stackSize) {
     if (genericStackPtr->failureCallback != NULL) {
       (*(genericStackPtr->failureCallback))(__FILE__, __LINE__, EINVAL, function);
@@ -155,16 +167,24 @@ void  *genericStackGet(genericStack_t *genericStackPtr, unsigned int index)
   return genericStackPtr->buf[index];
 }
 
-void  *genericStackSet(genericStack_t *genericStackPtr, unsigned int index, void *elementPtr)
+size_t genericStackSet(genericStack_t *genericStackPtr, unsigned int index, void *elementPtr)
 {
   const static char *function = "genericStackSet()";
   size_t minStackSize = index+1;
 
   if (genericStackPtr == NULL) {
-    return NULL;
+    return 0;
   }
-  while (index >= genericStackPtr->allocSize) {
-    genericStackPush(genericStackPtr, NULL);
+  if (index >= genericStackPtr->stackSize && genericStackPtr->optionGrowOnSet == 1) {
+    while (index >= genericStackPtr->stackSize) {
+      genericStackPush(genericStackPtr, NULL);
+    }
+  }
+  if (index >= genericStackPtr->stackSize) {
+    if (genericStackPtr->failureCallback != NULL) {
+      (*(genericStackPtr->failureCallback))(__FILE__, __LINE__, EINVAL, function);
+    }
+    return 0;
   }
   if (genericStackPtr->buf[index] != NULL) {
     if (genericStackPtr->freeCallback != NULL) {
@@ -200,7 +220,7 @@ void  *genericStackSet(genericStack_t *genericStackPtr, unsigned int index, void
   if (genericStackPtr->stackSize < minStackSize) {
     genericStackPtr->stackSize = minStackSize;
   }
-  return genericStackPtr->buf[index];
+  return 1;
 }
 
 void genericStackFree(genericStack_t **genericStackPtrPtr)

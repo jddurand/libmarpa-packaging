@@ -172,6 +172,7 @@ int main() {
     /* Create a stack */
     /* --------------- */
     genericStackPtr = genericStackCreate(sizeof(s_stack_t),
+					 GENERICSTACK_OPTION_DEFAULT,
 					 &stack_failure_callback,
 					 &stack_free_callback,
 					 &stack_copy_callback);
