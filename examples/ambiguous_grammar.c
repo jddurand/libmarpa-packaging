@@ -52,6 +52,7 @@ extern const struct marpa_error_description_s marpa_error_description[];
 void stack_failure_callback(const char *file, int line, int errnum, const char *function);
 int  stack_free_callback(void *elementPtr);
 int  stack_copy_callback(void *elementDstPtr, void *elementSrcPtr);
+void stack_trace_callback(const char *file, int line, const char *function, const char *format, ...);
 
 int main() {
   /* Marpa variables */
@@ -175,7 +176,8 @@ int main() {
 					 GENERICSTACK_OPTION_DEFAULT,
 					 &stack_failure_callback,
 					 &stack_free_callback,
-					 &stack_copy_callback);
+					 &stack_copy_callback,
+					 &stack_trace_callback);
 
     marpa_v_rule_is_valued_set(v, op_rule_id, 1);
     marpa_v_rule_is_valued_set(v, start_rule_id, 1);
@@ -397,3 +399,13 @@ int stack_copy_callback(void *elementDstPtr, void *elementSrcPtr) {
 
   return 0;
 }
+
+void stack_trace_callback(const char *file, int line, const char *function, const char *format, ...) {
+  va_list ap;
+  
+  va_start(ap, format);
+  fprintf(stderr, "%s(%d) : %s : ", file, line, function);
+  vfprintf(stderr, format, ap);
+  va_end(ap);
+}
+
