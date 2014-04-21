@@ -3,7 +3,7 @@ CFLAGS+= -Wall -g
 
 all: ambiguous_grammar
 
-ambiguous_grammar: ambiguous_grammar.o
+ambiguous_grammar: ambiguous_grammar.o genericStack.o
 	$(CC) -o $@ $^ $(LDFLAGS)
 
 %.o: %.c thin_macros.h stack.h

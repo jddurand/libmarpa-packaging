@@ -2,9 +2,10 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <string.h>
+#include <errno.h>
 #include <marpa.h>
 #include "thin_macros.h"
-#include "stack.h"
+#include "genericStack.h"
 
 /*
   C version of first example in file t/thin_eq.t
@@ -30,12 +31,13 @@
 
 */
 
-/* A stack here is composed of two elements, the string and a corresponding int */
+/* 
+ * A stack here is composed of two elements, the string and a corresponding int
+ */
 typedef struct s_stack {
   char *string;
   int value;
 } s_stack_t;
-DECL_STACK_TYPE(s_stack_t, marpa_stack);
 
 
 static char *_make_str    (const char *fmt, ...);
@@ -48,8 +50,8 @@ struct marpa_error_description_s {
 };
 extern const struct marpa_error_description_s marpa_error_description[];
 void stack_failure_callback(const char *file, int line, int errnum, const char *function);
-void stack_free_callback(s_stack_t *item);
-void stack_copy_callback(s_stack_t *new, s_stack_t *orig);
+int  stack_free_callback(void *elementPtr);
+int  stack_copy_callback(void *elementDstPtr, void *elementSrcPtr);
 
 int main() {
   /* Marpa variables */
@@ -76,7 +78,6 @@ int main() {
   int                 minus_token_value    = 5;      /* Indice 5 in token_values */
   int                 plus_token_value     = 6;      /* Indice 6 in token_values */
   int                 multiply_token_value = 7;      /* Indice 7 in token_values */
-  s_marpa_stack_t    *stackp;
 
   /* Initialize configuration */
   /* ------------------------ */
@@ -162,6 +163,7 @@ int main() {
   while (marpa_t_next(t) >= 0) {
     int nextok = 1;
     Marpa_Value v;
+    genericStack_t *genericStackPtr;
 
     /* Create a valuator */
     /* ----------------- */
@@ -169,7 +171,10 @@ int main() {
 
     /* Create a stack */
     /* --------------- */
-    CREATE_STACK(stackp);
+    genericStackPtr = genericStackCreate(sizeof(s_stack_t),
+					 &stack_failure_callback,
+					 &stack_free_callback,
+					 &stack_copy_callback);
 
     marpa_v_rule_is_valued_set(v, op_rule_id, 1);
     marpa_v_rule_is_valued_set(v, start_rule_id, 1);
@@ -183,6 +188,7 @@ int main() {
 
     while (nextok) {
       Marpa_Step_Type type     = marpa_v_step(v);
+      s_stack_t       new;
 
       switch (type) {
       case MARPA_STEP_TOKEN:
@@ -191,7 +197,10 @@ int main() {
 	  int token_value_ix       = marpa_v_token_value(v);
 	  int arg_n                = marpa_v_result(v);
 
-	  PUT_TO_STACK(stackp, arg_n, token_values[token_value_ix], atoi(token_values[token_value_ix]));
+	  new.string = token_values[token_value_ix];
+	  new.value = atoi(token_values[token_value_ix]);
+	  genericStackSet(genericStackPtr, arg_n, &new);
+
 	  break;
 	}
       case MARPA_STEP_RULE:
@@ -199,44 +208,50 @@ int main() {
 	  Marpa_Rule_ID rule_id    = marpa_v_rule(v);
 	  int arg_0                = marpa_v_arg_0(v);
 	  int arg_n                = marpa_v_arg_n(v);
-	  s_stack_t *stack_0       = GET_FROM_STACK(stackp, arg_0);
-	  s_stack_t *stack_n       = GET_FROM_STACK(stackp, arg_n);
+	  s_stack_t *stack_0       = genericStackGet(genericStackPtr, arg_0);
+	  s_stack_t *stack_n       = genericStackGet(genericStackPtr, arg_n);
 
 	  if (rule_id == start_rule_id) {
-	    char *str = _make_str("%s == %d", stack_n->string, stack_n->value);
-	    PUT_TO_STACK(stackp, arg_0, str, stack_n->value);
-	    free(str);
+	    new.string = _make_str("%s == %d", stack_n->string, stack_n->value);
+	    new.value = stack_n->value;
+	    genericStackSet(genericStackPtr, arg_0, &new);
+	    free(new.string);
 	  }
 	  else if (rule_id == number_rule_id) {
-	    char *str = _make_str("%d", stack_0->value);
-	    PUT_TO_STACK(stackp, arg_0, str, stack_0->value);
-	    free(str);
+	    new.string = _make_str("%d", stack_0->value);
+	    new.value = stack_0->value;
+	    genericStackSet(genericStackPtr, arg_0, &new);
+	    free(new.string);
 	  }
 	  else if (rule_id == op_rule_id) {
-	    s_stack_t *stack_0_plus_1  = GET_FROM_STACK(stackp, arg_0 + 1);
+	    s_stack_t *stack_0_plus_1  = genericStackGet(genericStackPtr, arg_0 + 1);
 	    char *left_string  = stack_0->string;
 	    int   left_value   = stack_0->value;
 	    char *op           = stack_0_plus_1->string;
 	    char *right_string = stack_n->string;
 	    int   right_value  = stack_n->value;
-	    char  *text        = _make_str("(%s%s%s)", left_string, op, right_string);
+
+	    new.string = _make_str("(%s%s%s)", left_string, op, right_string);
 
 	    switch (*op) {
 	    case '+':
-	      PUT_TO_STACK(stackp, arg_0, text, left_value + right_value);
+	      new.value = left_value + right_value;
+	      genericStackSet(genericStackPtr, arg_0, &new);
 	      break;
 	    case '-':
-	      PUT_TO_STACK(stackp, arg_0, text, left_value - right_value);
+	      new.value = left_value - right_value;
+	      genericStackSet(genericStackPtr, arg_0, &new);
 	      break;
 	    case '*':
-	      PUT_TO_STACK(stackp, arg_0, text, left_value * right_value);
+	      new.value = left_value * right_value;
+	      genericStackSet(genericStackPtr, arg_0, &new);
 	      break;
 	    default:
 	      fprintf(stderr, "Unknown op %s\n", op);
 	      exit(EXIT_FAILURE);
 	    }
 
-	    free(text);
+	    free(new.string);
 	  } else {
 	    fprintf(stderr, "Unknown rule %d\n", rule_id);
 	    exit(EXIT_FAILURE);
@@ -252,7 +267,7 @@ int main() {
       }
     }
     /* Check result and free the stack */
-    resultp = GET_FROM_STACK(stackp, 0);
+    resultp = genericStackGet(genericStackPtr, 0);
     if (resultp == NULL) {
       fprintf(stderr, "No result !?\n");
     } else {
@@ -275,7 +290,7 @@ int main() {
 	}
       }
     }
-    DELETE_STACK(stackp);
+    genericStackFree(&genericStackPtr);
 
     /* Free valuator */
     marpa_v_unref(v);
@@ -355,20 +370,29 @@ void stack_failure_callback(const char *file, int line, int errnum, const char *
   exit(EXIT_FAILURE);
 }
 
-void stack_free_callback(s_stack_t *item) {
+int stack_free_callback(void *elementPtr) {
+  s_stack_t *item = (s_stack_t *) elementPtr;
+
   if (item->string != NULL) {
     free(item->string);
     item->string = NULL;
   }
+
+  return 0;
 }
 
-void stack_copy_callback(s_stack_t *new, s_stack_t *orig) {
+int stack_copy_callback(void *elementDstPtr, void *elementSrcPtr) {
+  s_stack_t *new = (s_stack_t *) elementDstPtr;
+  s_stack_t *orig = (s_stack_t *) elementSrcPtr;
+
   new->string = NULL;
   if (orig->string != NULL) {
     new->string = strdup(orig->string);
     if (new->string == NULL) {
-      stack_failure_callback(__FILE__, __LINE__, errno, "stack_alloc_callback()");
+      return errno;
     }
   }
   new->value = orig->value;
+
+  return 0;
 }

@@ -79,16 +79,5 @@
     _check(marpa_g_error((g), NULL), "marpa_r_earleme_complete()", marpa_r_earleme_complete(r) < 0); \
   }
 
-#define CREATE_STACK(stackp) { (stackp) = s_marpa_stack_create(0, &stack_failure_callback, &stack_free_callback, &stack_copy_callback); }
-
-#define PUT_TO_STACK(stackp, index, str, val) {				\
-    s_stack_t new = { str, val };					\
-    s_marpa_stack_set((stackp), &new, (index));				\
-  }
-
-#define GET_FROM_STACK(stackp, index) s_marpa_stack_get((stackp), (index))
-
-#define DELETE_STACK(stackp) { s_marpa_stack_delete((stackp)); stackp = NULL; }
-
 #endif /* THIN_MACROS_H */
 
