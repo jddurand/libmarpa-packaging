@@ -81,7 +81,11 @@ loadMap($MAP_FILENAME, \%map);
 # Select libMarpaVersion
 # ----------------------
 if (! $opts{libMarpaVersion}) {
-    $opts{libMarpaVersion} = (sort {$a =~ s/\.//g; $b =~ s/\.//g; $b <=> $a} keys %map)[0];
+    $opts{libMarpaVersion} = (sort {
+	my @a = split(/\./, $a);
+	my @b = split(/\./, $b);
+	($b[0] <=> $a[0]) || ($b[1] <=> $a[1]) || ($b[2] <=> $a[2]);
+	} keys %map)[0];
 }
 
 $log->infof('Options in use: %s', \%opts);
