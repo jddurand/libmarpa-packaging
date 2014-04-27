@@ -482,7 +482,7 @@ void genericStackFree(genericStack_t **genericStackPtrPtr)
 
 #ifdef GENERICSTACK_DEBUG
   if (genericStackPtr->traceCallback != NULL) {
-    (*genericStackPtr->traceCallback)(__FILE__, __LINE__, function, "Setting *genericStackPtrPtr=*0x%x to NULL\n", (unsigned long) genericStackPtrPtr);
+    (*genericStackPtr->traceCallback)(__FILE__, __LINE__, function, "Setting *genericStackPtrPtr to NULL\n");
   }
 #endif
 
